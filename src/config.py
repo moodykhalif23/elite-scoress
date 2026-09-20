@@ -28,7 +28,7 @@ LEAGUES = {
 FOOTBALL_DATA_URL = "https://www.football-data.co.uk/mmz4281/{season}/{code}.csv"
 UNDERSTAT_URL = "https://understat.com/getLeagueData/{league}/{year}"
 
-HALF_LIFE_DAYS = 365.0
+HALF_LIFE_DAYS = 550.0
 MAX_GOALS = 10
 
 

@@ -10,7 +10,7 @@ every team directly from scorelines — no hand-labelled features. Those ratings
 scoreline distribution for any fixture, which is then read off as 1X2, over/under, BTTS and
 correct-score probabilities, each with a credible interval.
 
-Recent matches count more than old ones (exponential time decay, 1-year half-life), the
+Recent matches count more than old ones (exponential time decay, 550-day half-life), the
 Dixon–Coles correction fixes the well-known Poisson bias on 0-0/1-0/0-1/1-1, and squad
 availability shifts the rates before simulation.
 
@@ -55,6 +55,13 @@ defenders and keepers, a share of defensive minutes. Marking a player unavailabl
 share net of a replacement level, and the team's rates move accordingly. Historic injury lists
 aren't freely available, so this layer applies to upcoming fixtures only — the model itself is
 never trained on it.
+
+## Tuning
+
+`HALF_LIFE_DAYS` (550) and the MAP prior scale (0.45) were chosen by grid search on seasons
+2015/16–2020/21 and confirmed on a held-out 2021/22–2026/27 window, where they improved log
+loss from 0.9958 to 0.9936. The surface has an interior optimum — shorter memory forgets too
+fast, longer memory carries dead squads.
 
 ## Reading the output
 

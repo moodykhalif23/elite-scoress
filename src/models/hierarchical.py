@@ -116,7 +116,7 @@ def ratings(result, design: Design) -> pd.DataFrame:
     }).sort_values("strength", ascending=False).reset_index(drop=True)
 
 
-def fit_map(design: Design, fixed_sigma: float = 0.3, seed: int = 42) -> dict[str, np.ndarray]:
+def fit_map(design: Design, fixed_sigma: float = 0.45, seed: int = 42) -> dict[str, np.ndarray]:
     with build_model(design, fixed_sigma=fixed_sigma):
         point = pm.find_MAP(progressbar=False, seed=seed)
     out = {k: np.atleast_1d(np.asarray(v)) for k, v in point.items()}
