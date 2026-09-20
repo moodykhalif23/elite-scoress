@@ -14,6 +14,8 @@ COMPETITIONS = {"UCL": "cl", "UEL": "el"}
 FIRST_SEASON = 2011
 
 COUNTRY_TO_LEAGUE = {"ENG": "E0", "ESP": "SP1", "ITA": "I1", "GER": "D1"}
+FIXTURE_URL = "https://fixturedownload.com/download/{slug}-{year}-UTC.csv"
+FIXTURE_SLUGS = {"UCL": "champions-league", "UEL": "europa-league"}
 DATE_LINE = re.compile(r"^\s{2,}\w{3}\s+(\w{3})\s+(\d{1,2})(?:\s+(\d{4}))?\s*$")
 MATCH_LINE = re.compile(
     r"^\s+(?:\d{1,2}:\d{2}\s+)?(.+?)\s+\(([A-Z]{3})\)\s+v\s+(.+?)\s+\(([A-Z]{3})\)\s+(.+?)\s*$")
@@ -100,6 +102,79 @@ def load_all(refresh: bool = False, last: int | None = None) -> pd.DataFrame:
     if not frames:
         return pd.DataFrame()
     return pd.concat(frames, ignore_index=True).sort_values("date").reset_index(drop=True)
+
+
+def _fixture_csv(competition: str, year: int, refresh: bool = True) -> pd.DataFrame:
+    path = RAW / "europe" / f"fixtures_{FIXTURE_SLUGS[competition]}_{year}.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if refresh or not path.exists():
+        url = FIXTURE_URL.format(slug=FIXTURE_SLUGS[competition], year=year)
+        try:
+            resp = requests.get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+            resp.raise_for_status()
+            path.write_bytes(resp.content)
+        except requests.RequestException:
+            if not path.exists():
+                return pd.DataFrame()
+    try:
+        return pd.read_csv(path)
+    except (pd.errors.ParserError, UnicodeDecodeError):
+        return pd.DataFrame()
+
+
+def _schedule(year: int, refresh: bool = True) -> pd.DataFrame:
+    frames = []
+    for competition in FIXTURE_SLUGS:
+        raw = _fixture_csv(competition, year, refresh)
+        if raw.empty or "Home Team" not in raw.columns:
+            continue
+        frame = pd.DataFrame({
+            "date": pd.to_datetime(raw["Date"], format="%d/%m/%Y %H:%M", errors="coerce"),
+            "home_name": raw["Home Team"], "away_name": raw["Away Team"],
+            "home": raw["Home Team"].map(canonical), "away": raw["Away Team"].map(canonical),
+            "league": competition, "round": raw.get("Round Number"),
+            "score": raw.get("Result"),
+        })
+        frames.append(frame.dropna(subset=["date", "home", "away"]))
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True).sort_values("date").reset_index(drop=True)
+
+
+def upcoming(year: int | None = None, refresh: bool = True) -> pd.DataFrame:
+    from src.config import current_season_start
+
+    year = year if year is not None else current_season_start()
+    schedule = _schedule(year, refresh)
+    if schedule.empty:
+        return pd.DataFrame()
+    unplayed = schedule["score"].isna() | (schedule["score"].astype(str).str.strip() == "")
+    out = schedule[unplayed].drop(columns=["score"]).copy()
+    for column in ("odds_h", "odds_d", "odds_a"):
+        out[column] = float("nan")
+    return out.reset_index(drop=True)
+
+
+def played(year: int | None = None, refresh: bool = True) -> pd.DataFrame:
+    from src.config import current_season_start
+
+    year = year if year is not None else current_season_start()
+    schedule = _schedule(year, refresh)
+    if schedule.empty:
+        return pd.DataFrame()
+    scores = schedule["score"].astype(str).str.extract(r"(\d+)\s*-\s*(\d+)")
+    frame = schedule.assign(hg=pd.to_numeric(scores[0], errors="coerce"),
+                            ag=pd.to_numeric(scores[1], errors="coerce"))
+    frame = frame.dropna(subset=["hg", "ag"]).drop(columns=["score", "round"])
+    if frame.empty:
+        return frame
+    frame["result"] = ["H" if h > a else ("A" if a > h else "D")
+                       for h, a in zip(frame["hg"], frame["ag"])]
+    frame["competition"] = frame["league"]
+    frame["season"] = f"{year}/{str(year + 1)[2:]}"
+    frame["home_country"] = None
+    frame["away_country"] = None
+    return frame.drop(columns=["home_name", "away_name"]).reset_index(drop=True)
 
 
 def save(frame: pd.DataFrame, name: str = "europe.parquet") -> str:

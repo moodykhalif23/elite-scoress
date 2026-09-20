@@ -7,12 +7,13 @@ import requests
 
 from src.config import LEAGUES, RAW
 from src.ingest.football_data import _best_odds, _read_csv
+from src.ingest import europe
 from src.ingest.teams import canonical
 
 FIXTURES_URL = "https://www.football-data.co.uk/fixtures.csv"
 
 
-def upcoming(refresh: bool = True) -> pd.DataFrame:
+def upcoming(refresh: bool = True, with_europe: bool = True) -> pd.DataFrame:
     path = RAW / "fixtures.csv"
     if refresh or not path.exists():
         try:
@@ -35,4 +36,10 @@ def upcoming(refresh: bool = True) -> pd.DataFrame:
         "date": pd.to_datetime(df["Date"], format="%d/%m/%Y", errors="coerce"),
         "time": df.get("Time"),
     }).join(_best_odds(df))
-    return out.dropna(subset=["date", "home", "away"]).sort_values("date").reset_index(drop=True)
+    out = out.dropna(subset=["date", "home", "away"])
+    if with_europe:
+        european = europe.upcoming(refresh=refresh)
+        if not european.empty:
+            shared = [c for c in out.columns if c in european.columns]
+            out = pd.concat([out[shared], european[shared]], ignore_index=True)
+    return out.sort_values("date").reset_index(drop=True)

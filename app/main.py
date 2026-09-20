@@ -55,10 +55,12 @@ def note(text: str) -> None:
     st.markdown(f'<div class="fp-note">{text}</div>', unsafe_allow_html=True)
 
 
-def league_filter(key: str) -> list[str]:
-    chosen = st.pills("Leagues", list(LEAGUE_NAMES), default=list(LEAGUE_NAMES),
-                      format_func=lambda c: LEAGUE_NAMES[c], selection_mode="multi", key=key)
-    return chosen or list(LEAGUE_NAMES)
+def league_filter(key: str, options: list[str] | None = None) -> list[str]:
+    options = options or list(COMPETITIONS)
+    chosen = st.pills("Competitions", options, default=options,
+                      format_func=lambda c: COMPETITIONS.get(c, c),
+                      selection_mode="multi", key=key)
+    return chosen or options
 
 
 def form_results(matches: pd.DataFrame, team: str, limit: int = 6) -> list[str]:
@@ -175,7 +177,8 @@ def page_fixtures(result, design, values, matches):
     if fixtures.empty:
         st.info("No upcoming fixtures in the feed right now.")
         return
-    chosen = league_filter("fx_leagues")
+    present = [c for c in COMPETITIONS if c in set(fixtures["league"])]
+    chosen = league_filter("fx_leagues", present)
     fixtures = fixtures[fixtures["league"].isin(chosen)]
     if fixtures.empty:
         st.info("No fixtures for the selected leagues.")
@@ -188,7 +191,7 @@ def page_fixtures(result, design, values, matches):
 
     board = pd.DataFrame({
         "Kick-off": preds["date"].dt.strftime("%a %d %b"),
-        "League": preds["league"].map(LEAGUE_NAMES),
+        "League": preds["league"].map(lambda c: COMPETITIONS.get(c, c)),
         "Match": preds["home_name"] + "  v  " + preds["away_name"],
         "Home": preds["p_home"] * 100, "Draw": preds["p_draw"] * 100,
         "Away": preds["p_away"] * 100,
@@ -211,67 +214,9 @@ def page_fixtures(result, design, values, matches):
         return
     fx = preds.iloc[rows[0]]
     st.markdown(f"### {fx['home_name']} v {fx['away_name']}")
-    st.markdown(f'<div class="fp-meta">{LEAGUE_NAMES.get(fx["league"], fx["league"])}'
+    st.markdown(f'<div class="fp-meta">{COMPETITIONS.get(fx["league"], fx["league"])}'
                 f' · {fx["date"].strftime("%A %d %B %Y")}</div>', unsafe_allow_html=True)
     fixture_detail(result, design, values, matches, fx, get_injuries())
-
-
-def page_matchup(result, design, matches):
-    teams = sorted(design.teams)
-    league_of = dict(zip(design.teams, design.team_leagues))
-    left, middle, right = st.columns([2, 2, 1.4])
-    home = left.selectbox("Home", teams, index=teams.index("arsenal")
-                          if "arsenal" in teams else 0, format_func=str.title)
-    away = middle.selectbox("Away", teams, index=teams.index("barcelona")
-                            if "barcelona" in teams else 1, format_func=str.title)
-    options = [c for c in COMPETITIONS if c in design.leagues]
-    default = league_of.get(home) if league_of.get(home) == league_of.get(away) else "UCL"
-    competition = right.selectbox("Competition", options,
-                                  index=options.index(default) if default in options else 0,
-                                  format_func=lambda c: COMPETITIONS.get(c, c))
-    if home == away:
-        st.info("Pick two different teams.")
-        return
-
-    pred = simulate.predict_match(result, design, home, away, competition)
-    if pred is None:
-        st.warning("One of these teams has no rating in the current model.")
-        return
-
-    st.markdown(f"### {home.title()} v {away.title()}")
-    st.markdown(f'<div class="fp-meta">{COMPETITIONS.get(competition, competition)}'
-                f' · neutral of form and injuries</div>', unsafe_allow_html=True)
-    st.markdown(theme.outcome_bar_html(pred["home"], pred["draw"], pred["away"],
-                                       home.title(), away.title()), unsafe_allow_html=True)
-    st.markdown(theme.tiles_html([
-        ("Expected goals", f"{pred['exp_hg']:.2f} – {pred['exp_ag']:.2f}", "model rates"),
-        ("Likeliest score", pred["top_score"], f"{pred['top_score_p']*100:.1f}% of outcomes"),
-        ("Over 2.5", f"{pred['over_2.5']*100:.0f}%", f"both score {pred['btts']*100:.0f}%"),
-        ("Leagues", f"{league_of.get(home, '?')} v {league_of.get(away, '?')}",
-         "cross-league ratings"),
-    ]), unsafe_allow_html=True)
-
-    left, right = st.columns([3, 2])
-    with left:
-        eyebrow("Scoreline probabilities")
-        st.plotly_chart(scoreline_heatmap(pred["scoreline_grid"], home.title(),
-                                          away.title()), width="stretch")
-    with right:
-        eyebrow("Head to head")
-        history = rivalry.head_to_head(matches, home, away).head(8)
-        if history.empty:
-            st.caption("These teams have not met in the recorded data.")
-        else:
-            st.dataframe(pd.DataFrame({
-                "Date": history["date"].dt.date,
-                "Match": (history["home"].str.title() + " " + history["hg"].astype(int).astype(str)
-                          + "–" + history["ag"].astype(int).astype(str) + " "
-                          + history["away"].str.title()),
-                "In": history["league"],
-            }), hide_index=True, width="stretch")
-    note("Any two rated teams can be matched up, including across leagues — European results "
-         "since 2011 put every club on one scale. Upcoming Champions League fixtures are not "
-         "published for this season yet, so pick the tie yourself.")
 
 
 def page_ratings(result, design):
@@ -505,12 +450,10 @@ def main():
         f'{matches["date"].max().year} · {len(LEAGUE_NAMES)} leagues · {variant} model</div>',
         unsafe_allow_html=True)
 
-    page = st.sidebar.radio("View", ["Fixtures", "Match-up", "Team ratings", "Derbies & H2H",
+    page = st.sidebar.radio("View", ["Fixtures", "Team ratings", "Derbies & H2H",
                                      "Trajectory", "Backtest"], label_visibility="collapsed")
     if page == "Fixtures":
         page_fixtures(result, design, get_values(), matches)
-    elif page == "Match-up":
-        page_matchup(result, design, matches)
     elif page == "Team ratings":
         page_ratings(result, design)
     elif page == "Derbies & H2H":

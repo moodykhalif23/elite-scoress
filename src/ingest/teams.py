@@ -41,11 +41,48 @@ ALIASES = {
 }
 
 
+TRANSLITERATE = str.maketrans({"ø": "o", "Ø": "o", "đ": "d", "Đ": "d", "ł": "l", "Ł": "l",
+                               "æ": "ae", "Æ": "ae", "œ": "oe", "ð": "d", "þ": "th",
+                               "ı": "i", "ß": "ss"})
+
+
 def _fold(name: str) -> str:
-    text = unicodedata.normalize("NFKD", str(name))
+    text = unicodedata.normalize("NFKD", str(name).translate(TRANSLITERATE))
     text = "".join(c for c in text if not unicodedata.combining(c))
     text = text.lower().replace("&", " and ").replace("'", "").replace(".", " ")
     return re.sub(r"[^a-z0-9 ]+", " ", text)
+
+
+EUROPEAN = {
+    "sl benfica": "benfica", "sport lisboa e benfica": "benfica",
+    "sporting": "sporting cp", "sporting clube portugal": "sporting cp",
+    "sporting clube de portugal": "sporting cp",
+    "sporting braga": "braga", "sporting clube braga": "braga",
+    "sporting clube de braga": "braga", "sc braga": "braga",
+    "psv eindhoven": "psv", "galatasaray sk": "galatasaray",
+    "fk shakhtar donetsk": "shakhtar donetsk", "shakhtar": "shakhtar donetsk",
+    "fk crvena zvezda": "crvena zvezda", "crvena zvezda": "crvena zvezda",
+    "gnk dinamo zagreb": "dinamo zagreb", "gnk dinamo": "dinamo zagreb",
+    "dinamo": "dinamo zagreb", "feyenoord rotterdam": "feyenoord",
+    "racing lens": "lens", "racing club de lens": "lens", "racing club lens": "lens",
+    "qarabag agdam fk": "qarabag", "qarabag fk": "qarabag",
+    "royale union saint gilloise": "union saint gilloise",
+    "union sg": "union saint gilloise", "union": "union saint gilloise",
+    "sk slavia praha": "slavia praha", "sk sturm graz": "sturm graz",
+    "fk bod glimt": "bodo glimt", "bod glimt": "bodo glimt", "glimt": "bodo glimt",
+    "brugge kv": "club brugge", "brugge": "club brugge", "club brugge kv": "club brugge",
+    "atleti": "ath madrid", "b dortmund": "dortmund", "leipzig": "rb leipzig",
+    "man utd": "man united", "paris": "paris saint germain",
+    "psg": "paris saint germain", "paris saint germain": "paris saint germain",
+    "olympiacos": "olympiakos piraeus", "olympiakos": "olympiakos piraeus",
+    "marseille": "olympique marseille", "lyon": "olympique lyonnais",
+    "salzburg": "red bull salzburg", "red bull salzburg": "red bull salzburg",
+    "s bratislava": "slovan bratislava", "h beer sheva": "hapoel beer sheva",
+    "n e c": "nec nijmegen", "nec": "nec nijmegen",
+    "sk slovan bratislava": "slovan bratislava",
+    "bayer 04 leverkusen": "leverkusen", "eintracht frankfurt": "ein frankfurt",
+}
+ALIASES.update(EUROPEAN)
 
 
 def canonical(name: str) -> str:

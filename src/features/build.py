@@ -115,6 +115,10 @@ def build(refresh: bool = False, with_xg: bool = True, current_only: bool = Fals
 
     if with_europe:
         european = europe.load_all(refresh=refresh or current_only)
+        live = europe.played(refresh=True)
+        if not live.empty:
+            european = pd.concat([european, live], ignore_index=True)
+            european = european.drop_duplicates(["date", "home", "away"], keep="first")
         matches = _attach_europe(matches, european)
     else:
         matches = _attach_europe(matches, pd.DataFrame())
