@@ -93,6 +93,9 @@ def _team_league_map(df: pd.DataFrame) -> dict[str, str]:
             columns={"home": "team", "home_league": "league"}),
             df[["away", "away_league"]].rename(
                 columns={"away": "team", "away_league": "league"})])
+    stacked = stacked.dropna(subset=["league"])
+    if stacked.empty:
+        return {}
     return stacked.groupby("team")["league"].agg(lambda s: s.value_counts().index[0]).to_dict()
 
 
@@ -111,7 +114,7 @@ def build_design(matches: pd.DataFrame, as_of: pd.Timestamp | None = None,
     p_index = {p: i for i, p in enumerate(periods)}
 
     team_league = _team_league_map(df)
-    team_leagues = [team_league.get(t, leagues[0]) for t in teams]
+    team_leagues = [team_league.get(t, "OTHER") for t in teams]
     if cross_league is None:
         cross_league = df["league"].isin(("UCL", "UEL")).any()
 

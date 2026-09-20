@@ -81,6 +81,8 @@ EUROPEAN = {
     "n e c": "nec nijmegen", "nec": "nec nijmegen",
     "sk slovan bratislava": "slovan bratislava",
     "bayer 04 leverkusen": "leverkusen", "eintracht frankfurt": "ein frankfurt",
+    "rsc anderlecht": "anderlecht", "fk bodo glimt": "bodo glimt",
+    "lille osc": "lille", "omonia nikosia": "omonia", "omonia nicosia": "omonia",
 }
 ALIASES.update(EUROPEAN)
 

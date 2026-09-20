@@ -172,8 +172,6 @@ def played(year: int | None = None, refresh: bool = True) -> pd.DataFrame:
                        for h, a in zip(frame["hg"], frame["ag"])]
     frame["competition"] = frame["league"]
     frame["season"] = f"{year}/{str(year + 1)[2:]}"
-    frame["home_country"] = None
-    frame["away_country"] = None
     return frame.drop(columns=["home_name", "away_name"]).reset_index(drop=True)
 
 

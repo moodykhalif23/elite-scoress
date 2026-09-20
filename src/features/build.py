@@ -69,8 +69,11 @@ def _team_leagues(domestic: pd.DataFrame, european: pd.DataFrame) -> dict[str, s
     if european.empty:
         return mapping
     for side, country in (("home", "home_country"), ("away", "away_country")):
+        if country not in european.columns:
+            continue
         for team, code in zip(european[side], european[country]):
-            mapping.setdefault(team, europe.COUNTRY_TO_LEAGUE.get(code, code))
+            if pd.notna(code):
+                mapping.setdefault(team, europe.COUNTRY_TO_LEAGUE.get(code, code))
     return mapping
 
 
@@ -83,8 +86,8 @@ def _attach_europe(domestic: pd.DataFrame, european: pd.DataFrame) -> pd.DataFra
     domestic["home_league"] = domestic["league"]
     domestic["away_league"] = domestic["league"]
     european = european.copy()
-    european["home_league"] = european["home"].map(lookup)
-    european["away_league"] = european["away"].map(lookup)
+    european["home_league"] = european["home"].map(lookup).fillna("OTHER")
+    european["away_league"] = european["away"].map(lookup).fillna("OTHER")
     for column in ("xg_h", "xg_a", "odds_h", "odds_d", "odds_a"):
         european[column] = np.nan
     shared = [c for c in domestic.columns if c in european.columns]
