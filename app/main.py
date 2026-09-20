@@ -104,7 +104,7 @@ def match_detail(result, design, values, matches, fx):
         cols[3].metric("Best edge vs book", f"{edge*100:+.1f} pts")
 
     st.plotly_chart(scoreline_heatmap(pred["scoreline_grid"], fx["home_name"],
-                                      fx["away_name"]), use_container_width=True)
+                                      fx["away_name"]), width='stretch')
     show_h2h(matches, fx)
 
 
@@ -122,7 +122,7 @@ def show_h2h(matches: pd.DataFrame, fx, limit: int = 8):
         "Season": h2h["season"],
     })
     st.caption("Head-to-head")
-    st.dataframe(table, hide_index=True, use_container_width=True)
+    st.dataframe(table, hide_index=True, width='stretch')
 
 
 def page_fixtures(result, design, values, matches):
@@ -149,7 +149,7 @@ def page_fixtures(result, design, values, matches):
                   f"{row['home_name']} vs {row['away_name']}  —  "
                   f"{row['home']*100:.0f}/{row['draw']*100:.0f}/{row['away']*100:.0f}")
         with st.expander(header):
-            st.plotly_chart(outcome_bar(row), use_container_width=True)
+            st.plotly_chart(outcome_bar(row), width='stretch')
             match_detail(result, design, values, matches, row)
 
 
@@ -166,10 +166,10 @@ def page_ratings(result, design):
     fig.update_traces(textposition="top center", marker=dict(size=11))
     fig.add_hline(y=0, line_dash="dot", opacity=0.3)
     fig.add_vline(x=0, line_dash="dot", opacity=0.3)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
     st.caption("Ratings are identified within a league — cross-league values are not comparable.")
     st.dataframe(sub.drop(columns="league_name").round(3), hide_index=True,
-                 use_container_width=True)
+                 width='stretch')
 
 
 def page_backtest():
@@ -209,7 +209,7 @@ def page_backtest():
                      labels={"predicted": "Predicted probability",
                              "observed": "Observed frequency"})
     fig.add_shape(type="line", x0=0, y0=0, x1=1, y1=1, line=dict(dash="dot"))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def main():
