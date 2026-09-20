@@ -48,16 +48,13 @@ def fold(matches: pd.DataFrame, season: str, model, fit_kwargs: dict,
     design = build_design(train, as_of=train["date"].max(), **design_kwargs)
     params = model.fit_map(design, **fit_kwargs)
 
-    t_index = {t: i for i, t in enumerate(design.teams)}
-    l_index = {l: i for i, l in enumerate(design.leagues)}
-    known = test["home"].isin(t_index) & test["away"].isin(t_index) \
-        & test["league"].isin(l_index)
-    test = test[known]
-    if test.empty:
+    idx = design.index_fixtures(test)
+    usable = idx["usable"]
+    if not usable.any():
         return None
-    lam, mu, rho = model.rates(params, design, test["home"].map(t_index).to_numpy(),
-                               test["away"].map(t_index).to_numpy(),
-                               test["league"].map(l_index).to_numpy())
+    test = test[usable]
+    idx = {k: (v[usable] if hasattr(v, "__len__") else v) for k, v in idx.items()}
+    lam, mu, rho = model.rates(params, design, idx)
     probs = outcome_probabilities(lam, mu, rho)
     return probs, test["result"].map(OUTCOME_INDEX).to_numpy(), test
 

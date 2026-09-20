@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.config import ARTIFACTS, LEAGUES
 from src.features import build as features
+from src.features import rivalry
 from src.features import availability
 from src.features import players as player_features
 from src.ingest import fixtures as fixtures_ingest
@@ -217,6 +218,66 @@ def page_trajectory():
                "how its strength actually moved rather than one blended average.")
 
 
+def page_rivalry(result, design, matches):
+    names = {code: lg.name for code, lg in LEAGUES.items()}
+    league = st.sidebar.selectbox("League", sorted(names), format_func=lambda c: names[c])
+    pairs = rivalry.DERBIES.get(league, [])
+    labels = [f"{h} v {a}  ·  {tag}" for h, a, tag in pairs]
+    picked = st.sidebar.selectbox("Fixture", range(len(labels)),
+                                  format_func=lambda i: labels[i]) if labels else None
+    if picked is None:
+        st.info("No derbies listed for this league.")
+        return
+    home, away, tag = pairs[picked]
+
+    history = rivalry.head_to_head(matches, home, away)
+    if history.empty:
+        st.warning(f"No meetings between {home} and {away} since 2000.")
+        return
+
+    st.subheader(f"{home} v {away}")
+    st.caption(f"{tag} derby · {len(history)} meetings since 2000")
+
+    split = rivalry.venue_split(matches, home, away)
+    if not split.empty:
+        st.dataframe(split, hide_index=True, width='stretch')
+
+    pred = simulate.predict_match(result, design, home, away, league)
+    cols = st.columns(4)
+    if pred:
+        cols[0].metric(f"{home} win", f"{pred['home']*100:.1f}%")
+        cols[1].metric("Draw", f"{pred['draw']*100:.1f}%")
+        cols[2].metric(f"{away} win", f"{pred['away']*100:.1f}%")
+        cols[3].metric("Expected goals", f"{pred['exp_hg']:.2f} – {pred['exp_ag']:.2f}")
+
+    venue_only = st.checkbox(f"Only when {home} host", value=True)
+    grid = pred["scoreline_grid"] if pred else None
+    table = rivalry.recurrence(matches, home, away, grid, venue_specific=venue_only)
+    if table.empty:
+        st.info("No meetings at this venue.")
+        return
+
+    st.markdown("#### Which scorelines actually recur")
+    show = table.head(10).copy()
+    show["share"] = (show["share"] * 100).round(1)
+    if "model" in show:
+        show["model"] = (show["model"] * 100).round(1)
+    if "lift" in show:
+        show["lift"] = show["lift"].round(2)
+    columns = {"score": "Score", "times": "Times", "share": "Historic %",
+               "model": "Model %", "lift": "Lift"}
+    st.dataframe(show[[c for c in columns if c in show]].rename(columns=columns),
+                 hide_index=True, width='stretch')
+    st.caption(
+        "Lift above 1 means the scoreline has come up more often here than the model expects. "
+        "Across all 57 listed derbies, 52 scorelines clear a naive p<0.05 test against roughly "
+        "26 expected by chance — and **none survive correction for multiple testing**. Treat "
+        "every apparent pattern here as description, not prediction.")
+
+    if grid is not None:
+        st.plotly_chart(scoreline_heatmap(grid, home, away), width='stretch')
+
+
 def page_backtest():
     path = ARTIFACTS / "backtest.parquet"
     if not path.exists():
@@ -266,11 +327,14 @@ def main():
         st.code("python -m src.cli build\npython -m src.cli train --fast")
         return
 
-    page = st.sidebar.radio("View", ["Fixtures", "Team ratings", "Trajectory", "Backtest"])
+    page = st.sidebar.radio("View", ["Fixtures", "Team ratings", "Derbies & H2H",
+                                     "Trajectory", "Backtest"])
     if page == "Fixtures":
         page_fixtures(result, design, get_values(), get_matches())
     elif page == "Team ratings":
         page_ratings(result, design)
+    elif page == "Derbies & H2H":
+        page_rivalry(result, design, get_matches())
     elif page == "Trajectory":
         page_trajectory()
     else:

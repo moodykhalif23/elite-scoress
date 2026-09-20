@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from src.config import HALF_LIFE_DAYS, XG_WEIGHT
+from src.features.rivalry import derby_lookup
 
 
 @dataclass
@@ -19,9 +20,13 @@ class Design:
     target_h: np.ndarray
     target_a: np.ndarray
     weights: np.ndarray
+    pair_idx: np.ndarray
+    pair_orient: np.ndarray
+    is_derby: np.ndarray
     teams: list[str]
     leagues: list[str]
     periods: list[str]
+    pairs: list[str]
     membership: np.ndarray
 
     @property
@@ -35,6 +40,38 @@ class Design:
     @property
     def n_periods(self) -> int:
         return len(self.periods)
+
+    @property
+    def n_pairs(self) -> int:
+        return len(self.pairs)
+
+    def index_fixtures(self, fixtures: pd.DataFrame) -> dict[str, np.ndarray]:
+        teams = {t: i for i, t in enumerate(self.teams)}
+        leagues = {l: i for i, l in enumerate(self.leagues)}
+        pairs = {p: i for i, p in enumerate(self.pairs)}
+        derbies = derby_lookup()
+        keys = _pair_keys(fixtures["home"], fixtures["away"])
+        known = [pairs.get(k, -1) for k in keys]
+        return {
+            "usable": (fixtures["home"].isin(teams) & fixtures["away"].isin(teams)
+                       & fixtures["league"].isin(leagues)).to_numpy(),
+            "home_idx": fixtures["home"].map(teams).fillna(0).to_numpy().astype(int),
+            "away_idx": fixtures["away"].map(teams).fillna(0).to_numpy().astype(int),
+            "league_idx": fixtures["league"].map(leagues).fillna(0).to_numpy().astype(int),
+            "pair_idx": np.array([max(i, 0) for i in known]),
+            "pair_seen": np.array([i >= 0 for i in known], dtype=float),
+            "pair_orient": _orientation(fixtures["home"], fixtures["away"]),
+            "is_derby": np.array([frozenset(pair) in derbies for pair in
+                                  zip(fixtures["home"], fixtures["away"])], dtype=float),
+        }
+
+
+def _pair_keys(home: pd.Series, away: pd.Series) -> list[str]:
+    return [" v ".join(sorted((h, a))) for h, a in zip(home, away)]
+
+
+def _orientation(home: pd.Series, away: pd.Series) -> np.ndarray:
+    return np.array([1.0 if h <= a else -1.0 for h, a in zip(home, away)])
 
 
 def _blend(goals: pd.Series, xg: pd.Series, weight: float) -> np.ndarray:
@@ -66,6 +103,11 @@ def build_design(matches: pd.DataFrame, as_of: pd.Timestamp | None = None,
         membership[t_index[team], l_index[league]] = 1.0
     membership[membership.sum(axis=1) == 0, 0] = 1.0
 
+    pair_keys = _pair_keys(df["home"], df["away"])
+    pairs = sorted(set(pair_keys))
+    p_pair = {p: i for i, p in enumerate(pairs)}
+    derbies = derby_lookup()
+
     age = (as_of - df["date"]).dt.days.to_numpy().astype(float)
     weights = 0.5 ** (age / half_life) if decay else np.ones(len(df))
 
@@ -78,6 +120,11 @@ def build_design(matches: pd.DataFrame, as_of: pd.Timestamp | None = None,
         ag=df["ag"].to_numpy().astype(int),
         target_h=_blend(df["hg"], df["xg_h"], xg_weight),
         target_a=_blend(df["ag"], df["xg_a"], xg_weight),
+        pair_idx=np.array([p_pair[k] for k in pair_keys]),
+        pair_orient=_orientation(df["home"], df["away"]),
+        is_derby=np.array([frozenset(pair) in derbies
+                           for pair in zip(df["home"], df["away"])], dtype=float),
         weights=weights,
-        teams=teams, leagues=leagues, periods=periods, membership=membership,
+        teams=teams, leagues=leagues, periods=periods, pairs=pairs,
+        membership=membership,
     )

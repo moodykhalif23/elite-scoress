@@ -67,12 +67,12 @@ def fit_map(design: Design, innovation: float = INNOVATION, persistence: float =
     return out
 
 
-def rates(params: dict, design: Design, home_idx: np.ndarray, away_idx: np.ndarray,
-          league_idx: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
+def rates(params: dict, design: Design, idx: dict) -> tuple[np.ndarray, np.ndarray, float]:
     att, dfn = params["att"], params["def"]
-    base = params["intercept"][league_idx]
-    lam = np.exp(base + params["home_adv"][league_idx] + att[home_idx] - dfn[away_idx])
-    mu = np.exp(base + att[away_idx] - dfn[home_idx])
+    base = params["intercept"][idx["league_idx"]]
+    lam = np.exp(base + params["home_adv"][idx["league_idx"]]
+                 + att[idx["home_idx"]] - dfn[idx["away_idx"]])
+    mu = np.exp(base + att[idx["away_idx"]] - dfn[idx["home_idx"]])
     return lam, mu, float(np.ravel(params["rho"])[0])
 
 
