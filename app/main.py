@@ -22,9 +22,9 @@ st.set_page_config(page_title="Football Predictor", page_icon="⚽", layout="wid
 
 
 @st.cache_resource
-def get_model():
+def get_model(variant: str = "static"):
     from src.cli import load_model
-    return load_model()
+    return load_model(variant)
 
 
 @st.cache_data
@@ -182,6 +182,41 @@ def page_ratings(result, design):
                  width='stretch')
 
 
+def page_trajectory():
+    try:
+        params, design, _ = get_model("dynamic")
+    except FileNotFoundError:
+        st.info("Season-by-season ratings need the dynamic model.")
+        st.code("python -m src.cli train --model dynamic")
+        return
+    from src.models import dynamic
+
+    names = {code: lg.name for code, lg in LEAGUES.items()}
+    league = st.sidebar.selectbox("League", sorted(names), format_func=lambda c: names[c])
+    members = [t for i, t in enumerate(design.teams)
+               if design.leagues[int(np.argmax(design.membership[i]))] == league]
+    chosen = st.sidebar.multiselect("Teams", members, default=members[:4])
+    if not chosen:
+        st.info("Pick at least one team.")
+        return
+
+    frames = []
+    for team in chosen:
+        path = dynamic.trajectory(params, design, team)
+        path["team"] = team
+        frames.append(path)
+    history = pd.concat(frames, ignore_index=True)
+    history["strength"] = history["attack"] + history["defence"]
+
+    metric = st.radio("Series", ["strength", "attack", "defence"], horizontal=True)
+    fig = px.line(history, x="season", y=metric, color="team", markers=True, height=520)
+    fig.add_hline(y=0, line_dash="dot", opacity=0.3)
+    fig.update_layout(xaxis_title="", yaxis_title=metric.title())
+    st.plotly_chart(fig, width='stretch')
+    st.caption("Ratings follow an AR(1) path across seasons, so a team's line reflects "
+               "how its strength actually moved rather than one blended average.")
+
+
 def page_backtest():
     path = ARTIFACTS / "backtest.parquet"
     if not path.exists():
@@ -191,7 +226,7 @@ def page_backtest():
 
     preds = pd.read_parquet(path)
     actual = preds["result"].map({"H": 0, "D": 1, "A": 2}).to_numpy()
-    probs = preds[OUTCOMES].to_numpy()
+    probs = np.asarray(preds[OUTCOMES], dtype=float)
     probs = probs / probs.sum(axis=1, keepdims=True)
 
     cols = st.columns(3)
@@ -225,17 +260,19 @@ def page_backtest():
 def main():
     st.title("⚽ Football Predictor")
     try:
-        result, design = get_model()
+        result, design, _ = get_model()
     except FileNotFoundError as exc:
         st.error(str(exc))
         st.code("python -m src.cli build\npython -m src.cli train --fast")
         return
 
-    page = st.sidebar.radio("View", ["Fixtures", "Team ratings", "Backtest"])
+    page = st.sidebar.radio("View", ["Fixtures", "Team ratings", "Trajectory", "Backtest"])
     if page == "Fixtures":
         page_fixtures(result, design, get_values(), get_matches())
     elif page == "Team ratings":
         page_ratings(result, design)
+    elif page == "Trajectory":
+        page_trajectory()
     else:
         page_backtest()
 

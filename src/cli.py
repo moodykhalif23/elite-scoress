@@ -12,21 +12,30 @@ from src.features import players as player_features
 from src.ingest import api_football
 from src.ingest import fixtures as fixtures_ingest
 
-MODEL_PATH = ARTIFACTS / "model.pkl"
+def model_path(variant: str = "static"):
+    return ARTIFACTS / f"model_{variant}.pkl"
 
 
-def save_model(result, design) -> str:
-    with MODEL_PATH.open("wb") as fh:
-        pickle.dump({"result": result, "design": design}, fh)
-    return str(MODEL_PATH)
+def select(name: str):
+    from src.models import dynamic, hierarchical
+    return {"static": hierarchical, "dynamic": dynamic}[name]
 
 
-def load_model():
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError("no trained model; run `python -m src.cli train` first")
-    with MODEL_PATH.open("rb") as fh:
+def save_model(result, design, variant: str) -> str:
+    path = model_path(variant)
+    with path.open("wb") as fh:
+        pickle.dump({"result": result, "design": design, "variant": variant}, fh)
+    return str(path)
+
+
+def load_model(variant: str = "static"):
+    path = model_path(variant)
+    if not path.exists():
+        raise FileNotFoundError(f"no {variant} model; run "
+                                f"`python -m src.cli train --model {variant} --fast` first")
+    with path.open("rb") as fh:
         blob = pickle.load(fh)
-    return blob["result"], blob["design"]
+    return blob["result"], blob["design"], blob.get("variant", variant)
 
 
 def cmd_build(args):
@@ -40,21 +49,23 @@ def cmd_build(args):
 
 def cmd_train(args):
     from src.models import hierarchical
+    from src.models.design import build_design
 
+    model = select(args.model)
     matches = features.load()
-    design = hierarchical.build_design(matches)
+    design = build_design(matches, decay=args.model == "static")
     print(f"design: {len(design.hg):,} matches | {len(design.teams)} teams | "
-          f"effective sample {design.weights.sum():.0f}")
-    result = hierarchical.fit_map(design) if args.fast else \
-        hierarchical.fit(design, draws=args.draws, tune=args.tune, chains=args.chains)
-    print("saved:", save_model(result, design))
-    print(hierarchical.ratings(result, design).head(15).to_string(index=False))
+          f"{design.n_periods} periods | model={args.model}")
+    result = model.fit_map(design) if args.fast or args.model == "dynamic" else \
+        model.fit(design, draws=args.draws, tune=args.tune, chains=args.chains)
+    print("saved:", save_model(result, design, args.model))
+    print(hierarchical.ratings(result, design).head(12).to_string(index=False))
 
 
 def cmd_predict(args):
     from src.models import simulate
 
-    result, design = load_model()
+    result, design, _ = load_model()
     upcoming = fixtures_ingest.upcoming()
     if upcoming.empty:
         print("no upcoming fixtures available")
@@ -92,7 +103,7 @@ def cmd_backtest(args):
 
     matches = features.load()
     preds, summary = backtest.walk_forward(matches, start_season=args.start,
-                                           method="map" if args.fast else "nuts")
+                                           variant=args.model)
     if not summary:
         print("backtest produced no folds")
         return
@@ -115,6 +126,7 @@ def main():
     b.set_defaults(func=cmd_build)
 
     t = sub.add_parser("train", help="fit the latent strength model")
+    t.add_argument("--model", choices=("static", "dynamic"), default="static")
     t.add_argument("--fast", action="store_true", help="MAP instead of full sampling")
     t.add_argument("--draws", type=int, default=1000)
     t.add_argument("--tune", type=int, default=1000)
@@ -130,7 +142,7 @@ def main():
 
     k = sub.add_parser("backtest", help="walk-forward evaluation against bookmaker odds")
     k.add_argument("--start", default="2015/16")
-    k.add_argument("--fast", action="store_true", default=True)
+    k.add_argument("--model", choices=("static", "dynamic"), default="static")
     k.set_defaults(func=cmd_backtest)
 
     args = parser.parse_args()

@@ -9,8 +9,8 @@ from src.models.design import Design
 from src.models.hierarchical import _dixon_coles, ppml
 from src.models.params import posterior_arrays
 
-INNOVATION = 0.22
-PERSISTENCE = 0.92
+INNOVATION = 0.10
+PERSISTENCE = 0.99
 INITIAL = 0.40
 
 
@@ -61,16 +61,15 @@ def fit_map(design: Design, innovation: float = INNOVATION, persistence: float =
     with build_model(design, innovation, persistence, initial):
         point = pm.find_MAP(progressbar=False, seed=seed)
     out = {k: np.atleast_1d(np.asarray(v)) for k, v in point.items()}
-    out["att"] = out["att_path"][-1]
-    out["def"] = out["def_path"][-1]
+    out["att"] = out["att_path"][-1] * persistence
+    out["def"] = out["def_path"][-1] * persistence
     out["persistence"] = np.array([persistence])
     return out
 
 
 def rates(params: dict, design: Design, home_idx: np.ndarray, away_idx: np.ndarray,
           league_idx: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
-    phi = float(np.ravel(params.get("persistence", [PERSISTENCE]))[0])
-    att, dfn = params["att"] * phi, params["def"] * phi
+    att, dfn = params["att"], params["def"]
     base = params["intercept"][league_idx]
     lam = np.exp(base + params["home_adv"][league_idx] + att[home_idx] - dfn[away_idx])
     mu = np.exp(base + att[away_idx] - dfn[home_idx])

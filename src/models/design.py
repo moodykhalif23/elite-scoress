@@ -5,9 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from src.config import HALF_LIFE_DAYS
-
-XG_WEIGHT = 0.6
+from src.config import HALF_LIFE_DAYS, XG_WEIGHT
 
 
 @dataclass
@@ -49,7 +47,7 @@ def _blend(goals: pd.Series, xg: pd.Series, weight: float) -> np.ndarray:
 
 
 def build_design(matches: pd.DataFrame, as_of: pd.Timestamp | None = None,
-                 half_life: float = HALF_LIFE_DAYS, xg_weight: float = 0.0,
+                 half_life: float = HALF_LIFE_DAYS, xg_weight: float = XG_WEIGHT,
                  decay: bool = True) -> Design:
     df = matches.dropna(subset=["home", "away", "hg", "ag"]).copy()
     as_of = pd.Timestamp(as_of) if as_of is not None else df["date"].max()
