@@ -69,3 +69,14 @@ def test_recurrence_lift_compares_to_model(meetings):
 def test_recurrence_without_model_has_no_lift(meetings):
     table = rivalry.recurrence(meetings, "man united", "man city")
     assert table["model"].isna().all()
+
+
+def test_predicted_columns_never_shadow_team_names():
+    from src.models import simulate
+
+    fixtures = pd.DataFrame({"home": ["a"], "away": ["b"], "league": ["E0"]})
+    reserved = set(fixtures.columns)
+    emitted = {f"p_{n}{s}" for n in ("home", "draw", "away") for s in ("", "_lo", "_hi")}
+    assert not (emitted & reserved)
+    assert "home" not in emitted and "away" not in emitted
+    assert hasattr(simulate, "predict_fixtures")

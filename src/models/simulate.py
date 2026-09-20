@@ -89,5 +89,8 @@ def predict_fixtures(idata, design, fixtures: pd.DataFrame,
         if res is None:
             continue
         res.pop("scoreline_grid", None)
+        for name in ("home", "draw", "away"):
+            for suffix in ("", "_lo", "_hi"):
+                res[f"p_{name}{suffix}"] = res.pop(f"{name}{suffix}")
         rows.append({**fx.to_dict(), **res})
     return pd.DataFrame(rows)

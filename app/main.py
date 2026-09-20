@@ -50,8 +50,8 @@ def get_fixtures():
 
 def outcome_bar(row) -> go.Figure:
     fig = go.Figure()
-    for label, key, colour in [("Home", "home", "#2E86DE"), ("Draw", "draw", "#8395A7"),
-                               ("Away", "away", "#EE5A24")]:
+    for label, key, colour in [("Home", "p_home", "#2E86DE"), ("Draw", "p_draw", "#8395A7"),
+                               ("Away", "p_away", "#EE5A24")]:
         fig.add_bar(x=[row[key] * 100], y=[""], orientation="h", name=label,
                     marker_color=colour, text=f"{label} {row[key]*100:.0f}%",
                     textposition="inside", insidetextanchor="middle")
@@ -116,7 +116,43 @@ def match_detail(result, design, values, matches, fx, injuries=None):
 
     st.plotly_chart(scoreline_heatmap(pred["scoreline_grid"], fx["home_name"],
                                       fx["away_name"]), width='stretch')
+    show_form(matches, fx)
     show_h2h(matches, fx)
+
+
+def recent_form(matches: pd.DataFrame, team: str, limit: int = 6) -> pd.DataFrame:
+    played = matches[(matches["home"] == team) | (matches["away"] == team)]
+    played = played.sort_values("date", ascending=False).head(limit)
+    rows = []
+    for _, m in played.iterrows():
+        at_home = m["home"] == team
+        gf, ga = (m["hg"], m["ag"]) if at_home else (m["ag"], m["hg"])
+        outcome = "W" if gf > ga else ("D" if gf == ga else "L")
+        rows.append({"Date": m["date"].date(), "Venue": "H" if at_home else "A",
+                     "Opponent": m["away"] if at_home else m["home"],
+                     "Score": f"{int(gf)}–{int(ga)}", "Result": outcome})
+    return pd.DataFrame(rows)
+
+
+def form_summary(matches: pd.DataFrame, team: str, limit: int = 6) -> str:
+    played = matches[(matches["home"] == team) | (matches["away"] == team)]
+    played = played.sort_values("date", ascending=False).head(limit)
+    if played.empty:
+        return "no recent matches"
+    gf = np.where(played["home"] == team, played["hg"], played["ag"])
+    ga = np.where(played["home"] == team, played["ag"], played["hg"])
+    record = f"{int((gf > ga).sum())}W {int((gf == ga).sum())}D {int((gf < ga).sum())}L"
+    return f"{record} · {gf.sum():.0f}-{ga.sum():.0f} goals in last {len(played)}"
+
+
+def show_form(matches: pd.DataFrame, fx):
+    left, right = st.columns(2)
+    for col, team, name in ((left, fx["home"], fx["home_name"]),
+                            (right, fx["away"], fx["away_name"])):
+        col.caption(f"{name} — {form_summary(matches, team)}")
+        recent = recent_form(matches, team)
+        if not recent.empty:
+            col.dataframe(recent, hide_index=True, width='stretch')
 
 
 def show_h2h(matches: pd.DataFrame, fx, limit: int = 8):
@@ -158,7 +194,7 @@ def page_fixtures(result, design, values, matches):
     for _, row in preds.iterrows():
         header = (f"{row['date'].date()}  ·  {names.get(row['league'], row['league'])}  ·  "
                   f"{row['home_name']} vs {row['away_name']}  —  "
-                  f"{row['home']*100:.0f}/{row['draw']*100:.0f}/{row['away']*100:.0f}")
+                  f"{row['p_home']*100:.0f}/{row['p_draw']*100:.0f}/{row['p_away']*100:.0f}")
         with st.expander(header):
             st.plotly_chart(outcome_bar(row), width='stretch')
             match_detail(result, design, values, matches, row, get_injuries())

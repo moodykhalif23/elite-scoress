@@ -71,10 +71,10 @@ def cmd_predict(args):
         print("no upcoming fixtures available")
         return
     preds = simulate.predict_fixtures(result, design, upcoming)
-    cols = ["date", "league", "home_name", "away_name", "home", "draw", "away",
+    cols = ["date", "league", "home_name", "away_name", "p_home", "p_draw", "p_away",
             "exp_hg", "exp_ag", "top_score", "over_2.5", "btts"]
     show = preds[[c for c in cols if c in preds.columns]].copy()
-    for c in ("home", "draw", "away", "over_2.5", "btts"):
+    for c in ("p_home", "p_draw", "p_away", "over_2.5", "btts"):
         if c in show:
             show[c] = (show[c] * 100).round(1)
     print(show.to_string(index=False))
