@@ -1,4 +1,4 @@
-# Football Predictor
+# Elite Scores
 
 Latent-strength match prediction for the Premier League, La Liga, Serie A and Bundesliga,
 trained on every result since 2000.

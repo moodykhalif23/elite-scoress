@@ -117,7 +117,7 @@ def cmd_backtest(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="predict")
+    parser = argparse.ArgumentParser(prog="elite-scores")
     sub = parser.add_subparsers(dest="command", required=True)
 
     b = sub.add_parser("build", help="download and assemble the dataset")

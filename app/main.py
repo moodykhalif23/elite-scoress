@@ -16,7 +16,7 @@ from src.features import availability, build as features, players as player_feat
 from src.ingest import fixtures as fixtures_ingest
 from src.models import hierarchical, simulate
 
-st.set_page_config(page_title="Football Predictor", page_icon="◍", layout="wide")
+st.set_page_config(page_title="Elite Scores", page_icon="◍", layout="wide")
 LEAGUE_NAMES = {code: lg.name for code, lg in LEAGUES.items()}
 
 
@@ -124,18 +124,23 @@ def fixture_detail(result, design, values, matches, fx, injuries):
                                        fx["home_name"], fx["away_name"]),
                 unsafe_allow_html=True)
 
-    edge = ""
+    band = pred["home_hi"] - pred["home_lo"]
     if pd.notna(fx.get("odds_h")):
         book = 1 / np.array([fx["odds_h"], fx["odds_d"], fx["odds_a"]], dtype=float)
         book = book / book.sum()
         best = max(pred["home"] - book[0], pred["draw"] - book[1], pred["away"] - book[2])
-        edge = f"{best*100:+.1f} pts vs book"
+        fourth = ("Edge vs book", f"{best*100:+.1f} pts",
+                  f"book implies {book[0]*100:.0f}% home")
+    elif band > 0.01:
+        fourth = ("Home win range", f"{pred['home_lo']*100:.0f}–{pred['home_hi']*100:.0f}%",
+                  "90% credible band")
+    else:
+        fourth = ("Draw chance", f"{pred['draw']*100:.0f}%", "point estimate, no odds")
     st.markdown(theme.tiles_html([
         ("Expected goals", f"{pred['exp_hg']:.2f} – {pred['exp_ag']:.2f}", "model rates"),
         ("Likeliest score", pred["top_score"], f"{pred['top_score_p']*100:.1f}% of outcomes"),
         ("Over 2.5", f"{pred['over_2.5']*100:.0f}%", f"both score {pred['btts']*100:.0f}%"),
-        ("Home win range", f"{pred['home_lo']*100:.0f}–{pred['home_hi']*100:.0f}%",
-         edge or "90% credible band"),
+        fourth,
     ]), unsafe_allow_html=True)
 
     left, right = st.columns([3, 2])
@@ -426,7 +431,7 @@ def page_backtest():
 
 def main():
     theme.inject_css()
-    st.markdown("# Football Predictor")
+    st.markdown("# Elite Scores")
     try:
         result, design, variant = get_model()
     except FileNotFoundError as exc:
