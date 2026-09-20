@@ -1,0 +1,12 @@
+pandas>=2.2
+numpy>=1.26
+scipy>=1.13
+pymc>=5.16
+arviz>=0.19
+requests>=2.32
+beautifulsoup4>=4.12
+lxml>=5.2
+streamlit>=1.38
+plotly>=5.24
+pyyaml>=6.0
+tqdm>=4.66

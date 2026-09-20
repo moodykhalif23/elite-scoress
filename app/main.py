@@ -1,0 +1,234 @@
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from src.config import ARTIFACTS, LEAGUES
+from src.features import build as features
+from src.features import players as player_features
+from src.ingest import fixtures as fixtures_ingest
+from src.models import hierarchical, simulate
+
+st.set_page_config(page_title="Football Predictor", page_icon="⚽", layout="wide")
+
+
+@st.cache_resource
+def get_model():
+    from src.cli import load_model
+    return load_model()
+
+
+@st.cache_data
+def get_matches():
+    return features.load()
+
+
+@st.cache_data
+def get_values():
+    return player_features.load()
+
+
+@st.cache_data(ttl=3600)
+def get_fixtures():
+    return fixtures_ingest.upcoming()
+
+
+def outcome_bar(row) -> go.Figure:
+    fig = go.Figure()
+    for label, key, colour in [("Home", "home", "#2E86DE"), ("Draw", "draw", "#8395A7"),
+                               ("Away", "away", "#EE5A24")]:
+        fig.add_bar(x=[row[key] * 100], y=[""], orientation="h", name=label,
+                    marker_color=colour, text=f"{label} {row[key]*100:.0f}%",
+                    textposition="inside", insidetextanchor="middle")
+    fig.update_layout(barmode="stack", height=90, showlegend=False,
+                      margin=dict(l=0, r=0, t=10, b=10),
+                      xaxis=dict(range=[0, 100], visible=False), yaxis=dict(visible=False))
+    return fig
+
+
+def scoreline_heatmap(grid: np.ndarray, home: str, away: str, top: int = 6) -> go.Figure:
+    sub = grid[:top, :top] * 100
+    fig = px.imshow(sub, labels=dict(x=f"{away} goals", y=f"{home} goals", color="%"),
+                    x=list(range(top)), y=list(range(top)),
+                    color_continuous_scale="Blues", text_auto=".1f", aspect="auto")
+    fig.update_layout(height=340, margin=dict(l=0, r=0, t=20, b=0))
+    return fig
+
+
+def match_detail(result, design, values, matches, fx):
+    st.markdown(f"#### {fx['home_name']} vs {fx['away_name']}")
+    out_home, out_away = [], []
+    if values.empty:
+        st.caption("No player data yet — run `python -m src.cli build` to enable squad adjustments.")
+    else:
+        left, right = st.columns(2)
+        for col, team, name, bucket in [(left, fx["home"], fx["home_name"], "home"),
+                                        (right, fx["away"], fx["away_name"], "away")]:
+            squad = values[values["team"] == team].sort_values("att_share", ascending=False)
+            picked = col.multiselect(f"{name} — unavailable", squad["player"].tolist()[:30],
+                                     key=f"{fx['home']}_{fx['away']}_{bucket}")
+            (out_home if bucket == "home" else out_away).extend(picked)
+
+    h_att, h_def = player_features.team_adjustment(values, fx["home"], out_home)
+    a_att, a_def = player_features.team_adjustment(values, fx["away"], out_away)
+    adjust = (h_att + a_def, a_att + h_def)
+
+    pred = simulate.predict_match(result, design, fx["home"], fx["away"], fx["league"], adjust)
+    if pred is None:
+        st.warning("One of these teams has no rating yet (newly promoted or unmatched name).")
+        return
+
+    cols = st.columns(4)
+    cols[0].metric("Home win", f"{pred['home']*100:.1f}%",
+                   f"{pred['home_lo']*100:.0f}–{pred['home_hi']*100:.0f}% band")
+    cols[1].metric("Draw", f"{pred['draw']*100:.1f}%")
+    cols[2].metric("Away win", f"{pred['away']*100:.1f}%")
+    cols[3].metric("Expected goals", f"{pred['exp_hg']:.2f} – {pred['exp_ag']:.2f}")
+
+    cols = st.columns(4)
+    cols[0].metric("Most likely score", pred["top_score"], f"{pred['top_score_p']*100:.1f}%")
+    cols[1].metric("Over 2.5", f"{pred['over_2.5']*100:.1f}%")
+    cols[2].metric("BTTS", f"{pred['btts']*100:.1f}%")
+    if pd.notna(fx.get("odds_h")):
+        book = 1 / np.array([fx["odds_h"], fx["odds_d"], fx["odds_a"]])
+        book = book / book.sum()
+        edge = max(pred["home"] - book[0], pred["draw"] - book[1], pred["away"] - book[2])
+        cols[3].metric("Best edge vs book", f"{edge*100:+.1f} pts")
+
+    st.plotly_chart(scoreline_heatmap(pred["scoreline_grid"], fx["home_name"],
+                                      fx["away_name"]), use_container_width=True)
+    show_h2h(matches, fx)
+
+
+def show_h2h(matches: pd.DataFrame, fx, limit: int = 8):
+    mask = ((matches["home"] == fx["home"]) & (matches["away"] == fx["away"])) | \
+           ((matches["home"] == fx["away"]) & (matches["away"] == fx["home"]))
+    h2h = matches[mask].sort_values("date", ascending=False).head(limit)
+    if h2h.empty:
+        st.caption("No recorded head-to-head since 2000.")
+        return
+    table = pd.DataFrame({
+        "Date": h2h["date"].dt.date,
+        "Match": h2h["home"] + " " + h2h["hg"].astype(int).astype(str) + "–"
+                 + h2h["ag"].astype(int).astype(str) + " " + h2h["away"],
+        "Season": h2h["season"],
+    })
+    st.caption("Head-to-head")
+    st.dataframe(table, hide_index=True, use_container_width=True)
+
+
+def page_fixtures(result, design, values, matches):
+    fixtures = get_fixtures()
+    if fixtures.empty:
+        st.info("No upcoming fixtures in the feed right now.")
+        return
+    names = {code: lg.name for code, lg in LEAGUES.items()}
+    chosen = st.sidebar.multiselect("Leagues", list(names), default=list(names),
+                                    format_func=lambda c: names[c])
+    fixtures = fixtures[fixtures["league"].isin(chosen)]
+    if fixtures.empty:
+        st.info("No fixtures for the selected leagues.")
+        return
+
+    preds = simulate.predict_fixtures(result, design, fixtures)
+    if preds.empty:
+        st.warning("No fixtures could be matched to rated teams.")
+        return
+
+    st.subheader(f"{len(preds)} upcoming fixtures")
+    for _, row in preds.iterrows():
+        header = (f"{row['date'].date()}  ·  {names.get(row['league'], row['league'])}  ·  "
+                  f"{row['home_name']} vs {row['away_name']}  —  "
+                  f"{row['home']*100:.0f}/{row['draw']*100:.0f}/{row['away']*100:.0f}")
+        with st.expander(header):
+            st.plotly_chart(outcome_bar(row), use_container_width=True)
+            match_detail(result, design, values, matches, row)
+
+
+def page_ratings(result, design):
+    table = hierarchical.ratings(result, design)
+    names = {code: lg.name for code, lg in LEAGUES.items()}
+    table["league_name"] = table["league"].map(names)
+    league = st.sidebar.selectbox("League", sorted(table["league_name"].dropna().unique()))
+    sub = table[table["league_name"] == league]
+    fig = px.scatter(sub, x="attack", y="defence", text="team", color="strength",
+                     color_continuous_scale="RdYlBu", height=620,
+                     labels={"attack": "Attack (higher scores more)",
+                             "defence": "Defence (higher concedes less)"})
+    fig.update_traces(textposition="top center", marker=dict(size=11))
+    fig.add_hline(y=0, line_dash="dot", opacity=0.3)
+    fig.add_vline(x=0, line_dash="dot", opacity=0.3)
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption("Ratings are identified within a league — cross-league values are not comparable.")
+    st.dataframe(sub.drop(columns="league_name").round(3), hide_index=True,
+                 use_container_width=True)
+
+
+def page_backtest():
+    path = ARTIFACTS / "backtest.parquet"
+    if not path.exists():
+        st.info("Run `python -m src.cli backtest` to generate evaluation results.")
+        return
+    from src.backtest import OUTCOMES, implied_probabilities
+
+    preds = pd.read_parquet(path)
+    actual = preds["result"].map({"H": 0, "D": 1, "A": 2}).to_numpy()
+    probs = preds[OUTCOMES].to_numpy()
+    probs = probs / probs.sum(axis=1, keepdims=True)
+
+    cols = st.columns(3)
+    cols[0].metric("Matches tested", f"{len(preds):,}")
+    cols[1].metric("Accuracy", f"{(probs.argmax(axis=1) == actual).mean():.1%}")
+    cols[2].metric("Log loss", f"{-np.log(probs[np.arange(len(actual)), actual]).mean():.4f}")
+
+    mask = preds[["odds_h", "odds_d", "odds_a"]].notna().all(axis=1)
+    if mask.sum() > 50:
+        book = implied_probabilities(preds[mask])
+        b_loss = -np.log(book[np.arange(mask.sum()), actual[mask.to_numpy()]]).mean()
+        st.caption(f"Bookmaker log loss on the same matches: {b_loss:.4f} — "
+                   "lower is better, the book is the bar to beat.")
+
+    bins = np.linspace(0, 1, 11)
+    flat_p = probs.ravel()
+    flat_a = np.zeros_like(probs)
+    flat_a[np.arange(len(actual)), actual] = 1
+    frame = pd.DataFrame({"p": flat_p, "hit": flat_a.ravel()})
+    frame["bin"] = pd.cut(frame["p"], bins)
+    cal = frame.groupby("bin", observed=True).agg(predicted=("p", "mean"),
+                                                  observed=("hit", "mean"),
+                                                  n=("hit", "size")).dropna()
+    fig = px.scatter(cal, x="predicted", y="observed", size="n", height=460,
+                     labels={"predicted": "Predicted probability",
+                             "observed": "Observed frequency"})
+    fig.add_shape(type="line", x0=0, y0=0, x1=1, y1=1, line=dict(dash="dot"))
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def main():
+    st.title("⚽ Football Predictor")
+    try:
+        result, design = get_model()
+    except FileNotFoundError as exc:
+        st.error(str(exc))
+        st.code("python -m src.cli build\npython -m src.cli train --fast")
+        return
+
+    page = st.sidebar.radio("View", ["Fixtures", "Team ratings", "Backtest"])
+    if page == "Fixtures":
+        page_fixtures(result, design, get_values(), get_matches())
+    elif page == "Team ratings":
+        page_ratings(result, design)
+    else:
+        page_backtest()
+
+
+if __name__ == "__main__":
+    main()
