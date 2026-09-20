@@ -99,13 +99,15 @@ def load(name: str = "matches.parquet") -> pd.DataFrame:
 
 
 def coverage(matches: pd.DataFrame) -> pd.DataFrame:
+    stacked = pd.concat([matches[["league", "home"]].rename(columns={"home": "team"}),
+                         matches[["league", "away"]].rename(columns={"away": "team"})])
     grouped = matches.groupby("league")
     return pd.DataFrame({
         "matches": grouped.size(),
         "seasons": grouped["season"].nunique(),
-        "teams": grouped.apply(lambda g: len(set(g["home"]) | set(g["away"])), include_groups=False),
+        "teams": stacked.groupby("league")["team"].nunique(),
         "first": grouped["date"].min().dt.date,
         "last": grouped["date"].max().dt.date,
-        "xg_pct": (grouped["xg_h"].apply(lambda s: s.notna().mean()) * 100).round(1),
-        "odds_pct": (grouped["odds_h"].apply(lambda s: s.notna().mean()) * 100).round(1),
+        "xg_pct": (grouped["xg_h"].agg(lambda s: s.notna().mean()) * 100).round(1),
+        "odds_pct": (grouped["odds_h"].agg(lambda s: s.notna().mean()) * 100).round(1),
     }).reset_index()

@@ -31,6 +31,18 @@ ODDS_PREFERENCE = [("B365H", "B365D", "B365A"), ("PSH", "PSD", "PSA"), ("AvgH", 
                    ("GBH", "GBD", "GBA"), ("IWH", "IWD", "IWA"), ("SBH", "SBD", "SBA")]
 
 
+def _read_csv(source) -> pd.DataFrame:
+    for encoding in ("utf-8-sig", "cp1252", "latin-1"):
+        try:
+            if hasattr(source, "seek"):
+                source.seek(0)
+            return pd.read_csv(source, encoding=encoding, low_memory=False,
+                               on_bad_lines="skip")
+        except UnicodeDecodeError:
+            continue
+    raise UnicodeDecodeError("utf-8", b"", 0, 1, "unreadable csv")
+
+
 def _cache_path(code: str, season: str):
     return RAW / "football-data" / f"{code}_{season}.csv"
 
@@ -39,7 +51,7 @@ def download_season(code: str, season: str, refresh: bool = False) -> pd.DataFra
     path = _cache_path(code, season)
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and not refresh:
-        return pd.read_csv(path, encoding="utf-8-sig", low_memory=False)
+        return _read_csv(path)
     url = FOOTBALL_DATA_URL.format(season=season, code=code)
     try:
         resp = requests.get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
@@ -48,8 +60,7 @@ def download_season(code: str, season: str, refresh: bool = False) -> pd.DataFra
         return None
     if not resp.content.strip() or b"<html" in resp.content[:200].lower():
         return None
-    df = pd.read_csv(io.BytesIO(resp.content), encoding="utf-8-sig", low_memory=False,
-                     on_bad_lines="skip")
+    df = _read_csv(io.BytesIO(resp.content))
     df.to_csv(path, index=False)
     return df
 

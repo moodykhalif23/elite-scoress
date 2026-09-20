@@ -6,7 +6,7 @@ import pandas as pd
 import requests
 
 from src.config import LEAGUES, RAW
-from src.ingest.football_data import _best_odds
+from src.ingest.football_data import _best_odds, _read_csv
 from src.ingest.teams import canonical
 
 FIXTURES_URL = "https://www.football-data.co.uk/fixtures.csv"
@@ -22,7 +22,7 @@ def upcoming(refresh: bool = True) -> pd.DataFrame:
         except requests.RequestException:
             if not path.exists():
                 return pd.DataFrame()
-    df = pd.read_csv(path, encoding="utf-8-sig", low_memory=False, on_bad_lines="skip")
+    df = _read_csv(path)
     df = df[df["Div"].isin(LEAGUES)].reset_index(drop=True)
     if df.empty:
         return pd.DataFrame()
