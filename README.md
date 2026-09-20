@@ -1,7 +1,8 @@
 # Elite Scores
 
 Latent-strength match prediction for the Premier League, La Liga, Serie A and Bundesliga,
-trained on every result since 2000.
+trained on every result since 2000 — plus the Champions League and Europa League, which put
+every club on one cross-league scale.
 
 ## What it does
 
@@ -28,10 +29,15 @@ Two model variants share that likelihood:
 | football-data.co.uk | results, shots, cards, corners, closing odds | 2000 → now, all 4 leagues |
 | Understat | match xG, player minutes / xG / xA | 2014 → now |
 | football-data fixtures feed | upcoming matches + current odds | rolling |
+| openfootball | Champions League + Europa League results | 2011/12 → now |
 
 Team names differ between sources, so everything is routed through `src/ingest/teams.py`
 before joining.
 
+## Keeping it current
+
+```bash
+python -m src.cli update     
 ## Quick start
 
 ```bash
@@ -67,5 +73,7 @@ same matches. The bookmaker is the bar: beating it on log loss is hard and is th
 that means anything. Accuracy alone is not a useful measure here — always-predict-home clears
 45% on its own.
 
-Ratings are identified within a league, not across them. Comparing a Bundesliga attack rating
-to a La Liga one is not meaningful; these leagues never play each other in this dataset.
+Ratings are now identified **across** leagues, because Champions League and Europa League results
+connect them. Before those were added, a Bundesliga rating and a La Liga one were not comparable;
+they are now, though a club whose only matches are European carries far more uncertainty than its
+point estimate suggests.

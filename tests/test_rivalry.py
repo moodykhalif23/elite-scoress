@@ -80,3 +80,49 @@ def test_predicted_columns_never_shadow_team_names():
     assert not (emitted & reserved)
     assert "home" not in emitted and "away" not in emitted
     assert hasattr(simulate, "predict_fixtures")
+
+
+def test_european_regulation_score_ignores_extra_time_and_pens():
+    from src.ingest.europe import _regulation_score
+
+    assert _regulation_score("1-3 (1-1)") == (1, 3)
+    assert _regulation_score("0-0") == (0, 0)
+    assert _regulation_score("4-2 pen. 1-0 a.e.t. (1-0, 1-0)") == (1, 0)
+    assert _regulation_score("no score here") is None
+
+
+def test_european_parser_reads_a_block():
+    from src.ingest.europe import parse
+
+    text = "\n".join([
+        "= UEFA Champions League 2023/24",
+        "▪ Group, Matchday 1",
+        "  Tue Sep 19 2023",
+        "    18:45  AC Milan (ITA)          v Newcastle United FC (ENG)  0-0",
+        "  Wed Feb 14",
+        "    21:00  FC Bayern München (GER) v Arsenal FC (ENG)  2-1 (1-0)",
+    ])
+    frame = parse(text, "UCL", 2023)
+    assert len(frame) == 2
+    assert frame.iloc[0]["home"] == "milan" and frame.iloc[0]["away"] == "newcastle"
+    assert frame.iloc[0]["date"].year == 2023
+    assert frame.iloc[1]["date"].year == 2024
+    assert frame.iloc[1]["home"] == "bayern munich"
+    assert frame.iloc[1]["result"] == "H"
+
+
+def test_cross_league_design_centres_globally():
+    from src.models.design import build_design
+
+    frame = pd.DataFrame({
+        "date": pd.to_datetime(["2023-09-01", "2023-09-08", "2023-10-01"]),
+        "home": ["arsenal", "barcelona", "arsenal"],
+        "away": ["chelsea", "madrid", "barcelona"],
+        "home_league": ["E0", "SP1", "E0"], "away_league": ["E0", "SP1", "SP1"],
+        "league": ["E0", "SP1", "UCL"], "season": ["2023/24"] * 3,
+        "hg": [2, 1, 0], "ag": [1, 1, 3], "result": ["H", "D", "A"],
+        "xg_h": [np.nan] * 3, "xg_a": [np.nan] * 3,
+    })
+    design = build_design(frame)
+    assert design.membership.shape[1] == 1
+    assert set(design.team_leagues) == {"E0", "SP1"}

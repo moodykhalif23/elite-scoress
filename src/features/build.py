@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from src.config import PROCESSED
-from src.ingest import football_data, understat
+from src.ingest import europe, football_data, understat
 from src.ingest.teams import canonical
 
 FORM_WINDOW = 6
@@ -62,8 +62,39 @@ def _join_xg(matches: pd.DataFrame, xg: pd.DataFrame, tolerance: int = 1) -> pd.
     return matches.merge(best[["match_id", "xg_h", "xg_a"]], on="match_id", how="left")
 
 
-def build(refresh: bool = False, with_xg: bool = True) -> pd.DataFrame:
-    matches = football_data.load_all(refresh=refresh)
+def _team_leagues(domestic: pd.DataFrame, european: pd.DataFrame) -> dict[str, str]:
+    stacked = pd.concat([domestic[["home", "league"]].rename(columns={"home": "team"}),
+                         domestic[["away", "league"]].rename(columns={"away": "team"})])
+    mapping = stacked.groupby("team")["league"].agg(lambda s: s.value_counts().index[0]).to_dict()
+    if european.empty:
+        return mapping
+    for side, country in (("home", "home_country"), ("away", "away_country")):
+        for team, code in zip(european[side], european[country]):
+            mapping.setdefault(team, europe.COUNTRY_TO_LEAGUE.get(code, code))
+    return mapping
+
+
+def _attach_europe(domestic: pd.DataFrame, european: pd.DataFrame) -> pd.DataFrame:
+    if european.empty:
+        domestic["home_league"] = domestic["league"]
+        domestic["away_league"] = domestic["league"]
+        return domestic
+    lookup = _team_leagues(domestic, european)
+    domestic["home_league"] = domestic["league"]
+    domestic["away_league"] = domestic["league"]
+    european = european.copy()
+    european["home_league"] = european["home"].map(lookup)
+    european["away_league"] = european["away"].map(lookup)
+    for column in ("xg_h", "xg_a", "odds_h", "odds_d", "odds_a"):
+        european[column] = np.nan
+    shared = [c for c in domestic.columns if c in european.columns]
+    combined = pd.concat([domestic[shared], european[shared]], ignore_index=True)
+    return combined.sort_values("date").reset_index(drop=True)
+
+
+def build(refresh: bool = False, with_xg: bool = True, current_only: bool = False,
+          with_europe: bool = True) -> pd.DataFrame:
+    matches = football_data.load_all(refresh=refresh, current_only=current_only)
     matches["home"] = matches["home"].map(canonical)
     matches["away"] = matches["away"].map(canonical)
     matches = matches[matches["home"] != matches["away"]].copy()
@@ -71,7 +102,8 @@ def build(refresh: bool = False, with_xg: bool = True) -> pd.DataFrame:
     matches["match_id"] = np.arange(len(matches))
 
     if with_xg:
-        xg = understat.load_all("matches", refresh=refresh)
+        xg = understat.load_all("matches", refresh=refresh,
+                                current_only=current_only)
         if not xg.empty:
             xg["home"] = xg["home"].map(canonical)
             xg["away"] = xg["away"].map(canonical)
@@ -80,6 +112,13 @@ def build(refresh: bool = False, with_xg: bool = True) -> pd.DataFrame:
     for col in ("xg_h", "xg_a"):
         if col not in matches.columns:
             matches[col] = np.nan
+
+    if with_europe:
+        european = europe.load_all(refresh=refresh or current_only)
+        matches = _attach_europe(matches, european)
+    else:
+        matches = _attach_europe(matches, pd.DataFrame())
+    matches["match_id"] = np.arange(len(matches))
 
     long = _long_form(matches)
     roll = _rolling(long)

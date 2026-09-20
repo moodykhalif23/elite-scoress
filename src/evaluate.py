@@ -40,9 +40,12 @@ def score(probs: np.ndarray, actual: np.ndarray) -> dict[str, float]:
 
 
 def fold(matches: pd.DataFrame, season: str, model, fit_kwargs: dict,
-         design_kwargs: dict) -> tuple[np.ndarray, np.ndarray, pd.DataFrame] | None:
+         design_kwargs: dict,
+         test_leagues: tuple[str, ...] | None = None) -> tuple | None:
     train = matches[matches["season"] < season]
     test = matches[matches["season"] == season]
+    if test_leagues is not None:
+        test = test[test["league"].isin(test_leagues)]
     if train.empty or test.empty:
         return None
     design = build_design(train, as_of=train["date"].max(), **design_kwargs)
@@ -60,11 +63,12 @@ def fold(matches: pd.DataFrame, season: str, model, fit_kwargs: dict,
 
 
 def walk_forward(matches: pd.DataFrame, seasons: list[str], model,
-                 fit_kwargs: dict | None = None,
-                 design_kwargs: dict | None = None) -> tuple[dict, pd.DataFrame]:
+                 fit_kwargs: dict | None = None, design_kwargs: dict | None = None,
+                 test_leagues: tuple[str, ...] | None = None) -> tuple[dict, pd.DataFrame]:
     probs, actual, frames = [], [], []
     for season in seasons:
-        result = fold(matches, season, model, fit_kwargs or {}, design_kwargs or {})
+        result = fold(matches, season, model, fit_kwargs or {}, design_kwargs or {},
+                      test_leagues)
         if result is None:
             continue
         probs.append(result[0])

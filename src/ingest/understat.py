@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
 import pandas as pd
 import requests
 
-from src.config import LEAGUES, RAW, UNDERSTAT_URL, current_season_start
+from src.config import LEAGUES, PROCESSED, RAW, UNDERSTAT_URL, current_season_start
 
 FIRST_YEAR = 2014
 HEADERS = {
@@ -77,17 +78,60 @@ def players(league: str, year: int, refresh: bool = False) -> pd.DataFrame:
     return out
 
 
-def load_all(kind: str = "matches", refresh: bool = False, pause: float = 0.4) -> pd.DataFrame:
+def _history_path(kind: str):
+    return PROCESSED / f"history_understat_{kind}.parquet"
+
+
+def _raw_path(league: str, year: int):
+    return RAW / "understat" / f"{league.replace(' ', '_')}_{year}.json"
+
+
+def _history_is_stale(kind: str, live: int) -> bool:
+    path = _history_path(kind)
+    if not path.exists():
+        return True
+    stamp = path.stat().st_mtime
+    return any(_raw_path(lg.understat, y).stat().st_mtime > stamp
+               for lg in LEAGUES.values() for y in range(FIRST_YEAR, live)
+               if _raw_path(lg.understat, y).exists())
+
+
+def load_all(kind: str = "matches", refresh: bool = False, pause: float = 0.4,
+             current_only: bool = False) -> pd.DataFrame:
     getter = matches if kind == "matches" else players
+    live = current_season_start()
     frames = []
-    for league in LEAGUES.values():
-        for year in range(FIRST_YEAR, current_season_start() + 1):
-            df = getter(league.understat, year, refresh)
-            if df.empty:
-                continue
-            df["league"] = league.code
-            df["season_start"] = year
-            frames.append(df)
-            if refresh:
-                time.sleep(pause)
+
+    path = _history_path(kind)
+    if not refresh and not _history_is_stale(kind, live):
+        frames.append(pd.read_parquet(path))
+    else:
+        past = []
+        for league in LEAGUES.values():
+            for year in range(FIRST_YEAR, live):
+                df = getter(league.understat, year, refresh)
+                if df.empty:
+                    continue
+                df["league"] = league.code
+                df["season_start"] = year
+                past.append(df)
+                if refresh:
+                    time.sleep(pause)
+        history = pd.concat(past, ignore_index=True) if past else pd.DataFrame()
+        if not history.empty:
+            history.to_parquet(path, index=False)
+        frames.append(history)
+
+    leagues = list(LEAGUES.values())
+    with ThreadPoolExecutor(max_workers=len(leagues)) as pool:
+        current = pool.map(lambda lg: (lg, getter(lg.understat, live,
+                                                  refresh or current_only)), leagues)
+    for league, df in current:
+        if df.empty:
+            continue
+        df["league"] = league.code
+        df["season_start"] = live
+        frames.append(df)
+
+    frames = [f for f in frames if not f.empty]
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()

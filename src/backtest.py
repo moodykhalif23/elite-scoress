@@ -6,6 +6,7 @@ import pandas as pd
 from src.config import ARTIFACTS
 
 OUTCOMES = ["p_home", "p_draw", "p_away"]
+PRICED = ("E0", "SP1", "I1", "D1")
 
 
 def implied_probabilities(odds: pd.DataFrame) -> np.ndarray:
@@ -26,7 +27,8 @@ def walk_forward(matches: pd.DataFrame, start_season: str = "2015/16",
     tested = seasons[seasons.index(start_season):]
 
     summary, out = evaluate.walk_forward(df, tested, model,
-                                         design_kwargs={"decay": variant == "static"})
+                                         design_kwargs={"decay": variant == "static"},
+                                         test_leagues=PRICED)
     if out.empty:
         return out, {}
     actual = out["result"].map(evaluate.OUTCOME_INDEX).to_numpy()

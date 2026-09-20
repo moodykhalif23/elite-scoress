@@ -10,7 +10,7 @@ import requests
 from src.config import RAW
 
 BASE_URL = "https://v3.football.api-sports.io"
-LEAGUE_IDS = {"E0": 39, "SP1": 140, "I1": 135, "D1": 78}
+LEAGUE_IDS = {"E0": 39, "SP1": 140, "I1": 135, "D1": 78, "UCL": 2, "UEL": 3}
 CACHE = RAW / "api-football"
 THROTTLE = 0.25
 

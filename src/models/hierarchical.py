@@ -100,7 +100,7 @@ def fit_map(design: Design, fixed_sigma: float = MAP_SIGMA, pair_sigma: float = 
 def ratings(result, design: Design) -> pd.DataFrame:
     flat = posterior_arrays(result)
     att, dfn = flat["att"], flat["def"]
-    league_of = [design.leagues[int(np.argmax(row))] for row in design.membership]
+    league_of = design.team_leagues
     return pd.DataFrame({
         "team": design.teams,
         "league": league_of,

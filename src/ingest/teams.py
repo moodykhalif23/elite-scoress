@@ -32,6 +32,12 @@ ALIASES = {
     "rasenballsport leipzig": "rb leipzig", "arminia bielefeld": "bielefeld",
     "fortuna duesseldorf": "fortuna dusseldorf", "greuther fuerth": "greuther furth",
     "nuernberg": "nurnberg", "st pauli": "st pauli", "bayern munich": "bayern munich",
+    "bayern munchen": "bayern munich", "munchen": "bayern munich",
+    "monchengladbach": "mgladbach", "bor monchengladbach": "mgladbach",
+    "lazio roma": "lazio", "internazionale milano": "inter", "internazionale": "inter",
+    "atalanta bc": "atalanta", "leicester city": "leicester",
+    "sociedad futbol": "sociedad", "atletico de madrid": "ath madrid",
+    "athletic bilbao": "ath bilbao", "sevilla": "sevilla", "porto": "porto",
 }
 
 

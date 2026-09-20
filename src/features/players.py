@@ -15,8 +15,9 @@ def _is_defensive(position: str) -> bool:
     return bool(set(str(position).split()) & DEFENSIVE)
 
 
-def build_values(seasons_back: int = 2, refresh: bool = False) -> pd.DataFrame:
-    players = understat.load_all("players", refresh=refresh)
+def build_values(seasons_back: int = 2, refresh: bool = False,
+                 current_only: bool = False) -> pd.DataFrame:
+    players = understat.load_all("players", refresh=refresh, current_only=current_only)
     if players.empty:
         return pd.DataFrame()
     latest = current_season_start()

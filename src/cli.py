@@ -81,6 +81,12 @@ def cmd_predict(args):
     preds.to_parquet(ARTIFACTS / "predictions.parquet", index=False)
 
 
+def cmd_update(args):
+    from src import update
+
+    print(update.run(retrain=not args.no_train, variant=args.model, force=args.force))
+
+
 def cmd_injuries(args):
     if not api_football.available():
         print("set API_FOOTBALL_KEY to enable injury pulls (free tier is enough: "
@@ -135,6 +141,12 @@ def main():
 
     p = sub.add_parser("predict", help="predict upcoming fixtures")
     p.set_defaults(func=cmd_predict)
+
+    u = sub.add_parser("update", help="fetch new results and retrain if anything changed")
+    u.add_argument("--model", choices=("static", "dynamic"), default="static")
+    u.add_argument("--no-train", action="store_true", help="fetch only")
+    u.add_argument("--force", action="store_true", help="retrain even with no new results")
+    u.set_defaults(func=cmd_update)
 
     j = sub.add_parser("injuries", help="pull current injuries (needs API_FOOTBALL_KEY)")
     j.add_argument("--budget", type=int, default=8, help="max API requests to spend")

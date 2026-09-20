@@ -43,6 +43,11 @@ def season_codes(first: int = FIRST_SEASON, last: int | None = None) -> list[str
     return [f"{y % 100:02d}{(y + 1) % 100:02d}" for y in range(first, last + 1)]
 
 
+def current_season_code() -> str:
+    year = current_season_start()
+    return f"{year % 100:02d}{(year + 1) % 100:02d}"
+
+
 def season_label(code: str) -> str:
     start = int(code[:2])
     century = 2000 if start < 90 else 1900

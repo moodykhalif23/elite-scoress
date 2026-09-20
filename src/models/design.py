@@ -27,6 +27,7 @@ class Design:
     leagues: list[str]
     periods: list[str]
     pairs: list[str]
+    team_leagues: list[str]
     membership: np.ndarray
 
     @property
@@ -83,9 +84,21 @@ def _blend(goals: pd.Series, xg: pd.Series, weight: float) -> np.ndarray:
     return np.where(has_xg, blended, out)
 
 
+def _team_league_map(df: pd.DataFrame) -> dict[str, str]:
+    if "home_league" not in df.columns:
+        stacked = pd.concat([df[["home", "league"]].rename(columns={"home": "team"}),
+                             df[["away", "league"]].rename(columns={"away": "team"})])
+    else:
+        stacked = pd.concat([df[["home", "home_league"]].rename(
+            columns={"home": "team", "home_league": "league"}),
+            df[["away", "away_league"]].rename(
+                columns={"away": "team", "away_league": "league"})])
+    return stacked.groupby("team")["league"].agg(lambda s: s.value_counts().index[0]).to_dict()
+
+
 def build_design(matches: pd.DataFrame, as_of: pd.Timestamp | None = None,
                  half_life: float = HALF_LIFE_DAYS, xg_weight: float = XG_WEIGHT,
-                 decay: bool = True) -> Design:
+                 decay: bool = True, cross_league: bool | None = None) -> Design:
     df = matches.dropna(subset=["home", "away", "hg", "ag"]).copy()
     as_of = pd.Timestamp(as_of) if as_of is not None else df["date"].max()
     df = df[df["date"] <= as_of].sort_values("date")
@@ -97,11 +110,19 @@ def build_design(matches: pd.DataFrame, as_of: pd.Timestamp | None = None,
     l_index = {l: i for i, l in enumerate(leagues)}
     p_index = {p: i for i, p in enumerate(periods)}
 
-    membership = np.zeros((len(teams), len(leagues)))
-    primary = df.groupby("home")["league"].agg(lambda s: s.value_counts().index[0])
-    for team, league in primary.items():
-        membership[t_index[team], l_index[league]] = 1.0
-    membership[membership.sum(axis=1) == 0, 0] = 1.0
+    team_league = _team_league_map(df)
+    team_leagues = [team_league.get(t, leagues[0]) for t in teams]
+    if cross_league is None:
+        cross_league = df["league"].isin(("UCL", "UEL")).any()
+
+    if cross_league:
+        membership = np.ones((len(teams), 1))
+    else:
+        groups = sorted(set(team_leagues))
+        g_index = {g: i for i, g in enumerate(groups)}
+        membership = np.zeros((len(teams), len(groups)))
+        for i, league in enumerate(team_leagues):
+            membership[i, g_index[league]] = 1.0
 
     pair_keys = _pair_keys(df["home"], df["away"])
     pairs = sorted(set(pair_keys))
@@ -126,5 +147,5 @@ def build_design(matches: pd.DataFrame, as_of: pd.Timestamp | None = None,
                            for pair in zip(df["home"], df["away"])], dtype=float),
         weights=weights,
         teams=teams, leagues=leagues, periods=periods, pairs=pairs,
-        membership=membership,
+        team_leagues=team_leagues, membership=membership,
     )
