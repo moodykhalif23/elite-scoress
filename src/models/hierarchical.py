@@ -60,12 +60,15 @@ def _dixon_coles(hg, ag, lam, mu, rho):
     return pt.log(pt.clip(adj, 1e-6, np.inf))
 
 
-def build_model(design: Design) -> pm.Model:
+def build_model(design: Design, fixed_sigma: float | None = None) -> pm.Model:
     n_teams, n_leagues = design.membership.shape
     counts = design.membership.sum(axis=0)
     with pm.Model() as model:
-        sigma_att = pm.HalfNormal("sigma_att", 0.5)
-        sigma_def = pm.HalfNormal("sigma_def", 0.5)
+        if fixed_sigma is None:
+            sigma_att = pm.HalfNormal("sigma_att", 0.5)
+            sigma_def = pm.HalfNormal("sigma_def", 0.5)
+        else:
+            sigma_att = sigma_def = fixed_sigma
         att_raw = pm.Normal("att_raw", 0.0, sigma_att, shape=n_teams)
         def_raw = pm.Normal("def_raw", 0.0, sigma_def, shape=n_teams)
 
@@ -113,8 +116,8 @@ def ratings(result, design: Design) -> pd.DataFrame:
     }).sort_values("strength", ascending=False).reset_index(drop=True)
 
 
-def fit_map(design: Design, seed: int = 42) -> dict[str, np.ndarray]:
-    with build_model(design):
+def fit_map(design: Design, fixed_sigma: float = 0.3, seed: int = 42) -> dict[str, np.ndarray]:
+    with build_model(design, fixed_sigma=fixed_sigma):
         point = pm.find_MAP(progressbar=False, seed=seed)
     out = {k: np.atleast_1d(np.asarray(v)) for k, v in point.items()}
     member, counts = design.membership, design.membership.sum(axis=0)

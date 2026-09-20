@@ -52,6 +52,16 @@ def _h2h(long: pd.DataFrame, window: int = 10) -> pd.DataFrame:
         columns={"h2h_pts": "h2h_home_pts"})
 
 
+def _join_xg(matches: pd.DataFrame, xg: pd.DataFrame, tolerance: int = 1) -> pd.DataFrame:
+    xg = xg[["date", "home", "away", "xg_h", "xg_a"]].rename(columns={"date": "xg_date"})
+    candidates = matches[["match_id", "date", "home", "away"]].merge(xg, on=["home", "away"])
+    candidates["offset"] = (candidates["xg_date"]
+                            - candidates["date"].dt.normalize()).dt.days.abs()
+    best = candidates[candidates["offset"] <= tolerance].sort_values("offset") \
+        .drop_duplicates("match_id", keep="first")
+    return matches.merge(best[["match_id", "xg_h", "xg_a"]], on="match_id", how="left")
+
+
 def build(refresh: bool = False, with_xg: bool = True) -> pd.DataFrame:
     matches = football_data.load_all(refresh=refresh)
     matches["home"] = matches["home"].map(canonical)
@@ -66,10 +76,7 @@ def build(refresh: bool = False, with_xg: bool = True) -> pd.DataFrame:
             xg["home"] = xg["home"].map(canonical)
             xg["away"] = xg["away"].map(canonical)
             xg["date"] = pd.to_datetime(xg["date"]).dt.normalize()
-            matches["_d"] = matches["date"].dt.normalize()
-            xg = xg[["date", "home", "away", "xg_h", "xg_a"]].rename(columns={"date": "_d"})
-            matches = matches.merge(xg.drop_duplicates(["_d", "home", "away"]),
-                                    on=["_d", "home", "away"], how="left").drop(columns="_d")
+            matches = _join_xg(matches, xg)
     for col in ("xg_h", "xg_a"):
         if col not in matches.columns:
             matches[col] = np.nan

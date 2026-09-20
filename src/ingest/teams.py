@@ -46,7 +46,7 @@ def canonical(name: str) -> str:
     folded = re.sub(r"\s+", " ", _fold(name)).strip()
     if folded in ALIASES:
         return ALIASES[folded]
-    tokens = [t for t in folded.split() if t not in DROP_TOKENS]
+    tokens = [t for t in folded.split() if t not in DROP_TOKENS and not t.isdigit()]
     stripped = " ".join(tokens) if tokens else folded
     return ALIASES.get(stripped, stripped)
 
