@@ -7,7 +7,9 @@ import pandas as pd
 
 from src.config import ARTIFACTS
 from src.features import build as features
+from src.features import availability
 from src.features import players as player_features
+from src.ingest import api_football
 from src.ingest import fixtures as fixtures_ingest
 
 MODEL_PATH = ARTIFACTS / "model.pkl"
@@ -68,6 +70,23 @@ def cmd_predict(args):
     preds.to_parquet(ARTIFACTS / "predictions.parquet", index=False)
 
 
+def cmd_injuries(args):
+    if not api_football.available():
+        print("set API_FOOTBALL_KEY to enable injury pulls (free tier is enough: "
+              "4 requests covers all four leagues)")
+        return
+    reported = availability.current_injuries(budget_limit=args.budget)
+    if reported.empty:
+        print("no injuries reported")
+        return
+    values = player_features.load()
+    matched = sum(len(availability.unavailable_for(reported, values, team))
+                  for team in reported["team"].unique())
+    print(f"{len(reported)} reported across {reported['team'].nunique()} teams | "
+          f"{matched} matched to rated players")
+    print("saved:", availability.save(reported))
+
+
 def cmd_backtest(args):
     from src import backtest
 
@@ -104,6 +123,10 @@ def main():
 
     p = sub.add_parser("predict", help="predict upcoming fixtures")
     p.set_defaults(func=cmd_predict)
+
+    j = sub.add_parser("injuries", help="pull current injuries (needs API_FOOTBALL_KEY)")
+    j.add_argument("--budget", type=int, default=8, help="max API requests to spend")
+    j.set_defaults(func=cmd_injuries)
 
     k = sub.add_parser("backtest", help="walk-forward evaluation against bookmaker odds")
     k.add_argument("--start", default="2015/16")

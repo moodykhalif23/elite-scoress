@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.config import ARTIFACTS, LEAGUES
 from src.features import build as features
+from src.features import availability
 from src.features import players as player_features
 from src.ingest import fixtures as fixtures_ingest
 from src.models import hierarchical, simulate
@@ -34,6 +35,11 @@ def get_matches():
 @st.cache_data
 def get_values():
     return player_features.load()
+
+
+@st.cache_data(ttl=3600)
+def get_injuries():
+    return availability.load()
 
 
 @st.cache_data(ttl=3600)
@@ -63,17 +69,21 @@ def scoreline_heatmap(grid: np.ndarray, home: str, away: str, top: int = 6) -> g
     return fig
 
 
-def match_detail(result, design, values, matches, fx):
+def match_detail(result, design, values, matches, fx, injuries=None):
     st.markdown(f"#### {fx['home_name']} vs {fx['away_name']}")
     out_home, out_away = [], []
     if values.empty:
         st.caption("No player data yet — run `python -m src.cli build` to enable squad adjustments.")
     else:
+        reported = injuries if injuries is not None else pd.DataFrame()
         left, right = st.columns(2)
         for col, team, name, bucket in [(left, fx["home"], fx["home_name"], "home"),
                                         (right, fx["away"], fx["away_name"], "away")]:
             squad = values[values["team"] == team].sort_values("att_share", ascending=False)
-            picked = col.multiselect(f"{name} — unavailable", squad["player"].tolist()[:30],
+            options = squad["player"].tolist()[:30]
+            flagged = availability.unavailable_for(reported, values, team)
+            picked = col.multiselect(f"{name} — unavailable", options,
+                                     default=[p for p in flagged if p in options],
                                      key=f"{fx['home']}_{fx['away']}_{bucket}")
             (out_home if bucket == "home" else out_away).extend(picked)
 
@@ -150,7 +160,7 @@ def page_fixtures(result, design, values, matches):
                   f"{row['home']*100:.0f}/{row['draw']*100:.0f}/{row['away']*100:.0f}")
         with st.expander(header):
             st.plotly_chart(outcome_bar(row), width='stretch')
-            match_detail(result, design, values, matches, row)
+            match_detail(result, design, values, matches, row, get_injuries())
 
 
 def page_ratings(result, design):
