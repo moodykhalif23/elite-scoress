@@ -6,3 +6,4 @@ data/processed/
 *.nc
 .streamlit/secrets.toml
 .env
+data/artifacts/
